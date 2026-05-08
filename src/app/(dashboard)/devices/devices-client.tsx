@@ -10,6 +10,10 @@ type Device = {
   name: string;
   phoneNumber: string | null;
   status: string;
+  statusReason: string | null;
+  jid: string | null;
+  lastQrAt: Date | string | null;
+  lastSeenAt: Date | string | null;
   dailySendLimit: number;
   currentDailySentCount: number;
 };
@@ -33,12 +37,24 @@ export function DevicesClient({ devices }: { devices: Device[] }) {
     location.reload();
   }
 
-  async function connect(id: string) {
+  async function connect(id: string, freshSession = false) {
     setBusy(id);
-    await fetch(`/api/v1/devices/${id}/connect`, { method: "POST" });
-    const response = await fetch(`/api/v1/devices/${id}/qr`);
-    const json = await response.json();
-    setQr({ deviceId: id, image: json.data?.qr_image ?? null });
+    await fetch(`/api/v1/devices/${id}/connect`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fresh_session: freshSession }),
+    });
+
+    let image: string | null = null;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const response = await fetch(`/api/v1/devices/${id}/qr`, { cache: "no-store" });
+      const json = await response.json();
+      image = json.data?.qr_image ?? null;
+      if (image) break;
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    setQr({ deviceId: id, image });
     setBusy(null);
   }
 
@@ -69,9 +85,17 @@ export function DevicesClient({ devices }: { devices: Device[] }) {
               <div>
                 <p className="font-medium">{device.name}</p>
                 <p className="text-sm text-zinc-500">{device.phoneNumber ?? "Not paired"}</p>
+                {device.jid ? <p className="mt-1 break-all text-xs text-zinc-500">{device.jid}</p> : null}
                 <p className="mt-2 text-xs text-zinc-500">
                   {device.currentDailySentCount}/{device.dailySendLimit} sent today
                 </p>
+                {device.lastSeenAt ? <p className="mt-1 text-xs text-zinc-500">Last seen: {new Date(device.lastSeenAt).toLocaleString()}</p> : null}
+                {device.lastQrAt ? <p className="mt-1 text-xs text-zinc-500">QR issued: {new Date(device.lastQrAt).toLocaleString()}</p> : null}
+                {device.statusReason ? (
+                  <p className="mt-2 rounded-md border border-red-100 bg-red-50 px-2 py-1 text-xs text-red-700">
+                    {device.statusReason}
+                  </p>
+                ) : null}
               </div>
               <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700">{device.status}</span>
             </div>
@@ -79,6 +103,9 @@ export function DevicesClient({ devices }: { devices: Device[] }) {
               <Button type="button" onClick={() => connect(device.id)} disabled={busy === device.id}>
                 <QrCode className="mr-2 h-4 w-4" />
                 Pair / reconnect
+              </Button>
+              <Button type="button" variant="outline" onClick={() => connect(device.id, true)} disabled={busy === device.id}>
+                Fresh QR
               </Button>
               <Button type="button" variant="outline" onClick={() => disconnect(device.id)}>
                 <RefreshCcw className="mr-2 h-4 w-4" />

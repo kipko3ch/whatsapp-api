@@ -18,13 +18,27 @@ export class BaileysProvider implements WhatsAppProvider {
   private sockets = new Map<string, SocketEntry>();
   private logger = pino({ level: env().BAILEYS_LOG_LEVEL });
 
-  async connectDevice(deviceId: string) {
+  async connectDevice(deviceId: string, options: { freshSession?: boolean } = {}) {
     const device = await prisma.whatsappDevice.findUnique({ where: { id: deviceId } });
     if (!device) throw new Error("Device not found.");
 
+    const existing = this.sockets.get(deviceId);
+    if (existing) {
+      try {
+        existing.socket.end(new Error("Restarting WhatsApp pairing"));
+      } catch {
+        // Socket may already be closed.
+      }
+      this.sockets.delete(deviceId);
+    }
+
+    if (options.freshSession) {
+      await prisma.whatsappSession.deleteMany({ where: { deviceId } });
+    }
+
     await prisma.whatsappDevice.update({
       where: { id: deviceId },
-      data: { status: "connecting", statusReason: null },
+      data: { status: "connecting", statusReason: null, lastQr: null, lastQrAt: null },
     });
 
     // Avoid broken optional native ws add-ons on some Windows/Node setups.
@@ -33,10 +47,12 @@ export class BaileysProvider implements WhatsAppProvider {
 
     const baileys = await import("@whiskeysockets/baileys");
     const { state, saveCreds } = await createPostgresAuthState(deviceId);
+    const versionResult = await baileys.fetchLatestBaileysVersion().catch(() => null);
 
     const socket = baileys.default({
       auth: state as any,
       logger: this.logger,
+      version: versionResult?.version,
       printQRInTerminal: false,
       browser: ["Baileys API Platform", "Chrome", "1.0.0"],
       syncFullHistory: false,
@@ -69,8 +85,11 @@ export class BaileysProvider implements WhatsAppProvider {
           where: { id: deviceId },
           data: {
             status: "connected",
+            statusReason: null,
             jid: user?.id,
             phoneNumber: user?.id?.split(":")[0]?.replace(/\D/g, ""),
+            lastQr: null,
+            lastQrAt: null,
             lastSeenAt: new Date(),
             connectedAt: new Date(),
             health: update,
@@ -84,25 +103,29 @@ export class BaileysProvider implements WhatsAppProvider {
 
       if (connection === "close") {
         const statusCode = update.lastDisconnect?.error?.output?.statusCode;
+        const reason = update.lastDisconnect?.error?.message ?? null;
         const loggedOut = statusCode === 401 || statusCode === 403;
-        const nextStatus = loggedOut ? "logged_out" : "disconnected";
+        const conflict = typeof reason === "string" && reason.toLowerCase().includes("conflict");
+        const nextStatus = loggedOut ? "logged_out" : conflict ? "error" : "disconnected";
 
         this.sockets.delete(deviceId);
         await prisma.whatsappDevice.update({
           where: { id: deviceId },
           data: {
             status: nextStatus,
-            statusReason: update.lastDisconnect?.error?.message ?? null,
+            statusReason: reason,
+            lastQr: null,
+            lastQrAt: null,
             health: update,
           },
         });
         await emitWebhookEvent(device.workspaceId, "device_disconnected", {
           event: "device.disconnected",
           device_id: deviceId,
-          reason: update.lastDisconnect?.error?.message,
+          reason,
         });
 
-        if (!loggedOut) {
+        if (!loggedOut && !conflict) {
           setTimeout(() => {
             this.connectDevice(deviceId).catch((error) => this.logger.error(error));
           }, 5000);

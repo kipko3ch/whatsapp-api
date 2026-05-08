@@ -64,18 +64,6 @@ async function main() {
     },
   });
 
-  await prisma.whatsappDevice.upsert({
-    where: { id: "dev_sample_device" },
-    update: {},
-    create: {
-      id: "dev_sample_device",
-      workspaceId: workspace.id,
-      name: "Sample Sales Line",
-      status: "disconnected",
-      dailySendLimit: 250,
-    },
-  });
-
   console.log(`Seeded ${email} / ${password}`);
 }
 

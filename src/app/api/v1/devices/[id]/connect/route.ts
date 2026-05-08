@@ -17,7 +17,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return NextResponse.json({ error: { code: "not_found", message: "Device not found." } }, { status: 404 });
     }
 
-    await whatsappProvider().connectDevice(device.id);
+    const body = await req.json().catch(() => ({}));
+    await whatsappProvider().connectDevice(device.id, {
+      freshSession: Boolean(body.fresh_session),
+    });
     const updated = await prisma.whatsappDevice.findUnique({ where: { id: device.id } });
     return NextResponse.json({ data: updated });
   } catch (error) {

@@ -29,7 +29,7 @@ export type SendMessageResult = {
 };
 
 export interface WhatsAppProvider {
-  connectDevice(deviceId: string): Promise<void>;
+  connectDevice(deviceId: string, options?: { freshSession?: boolean }): Promise<void>;
   disconnectDevice(deviceId: string, logout?: boolean): Promise<void>;
   sendMessage(input: SendMessageInput): Promise<SendMessageResult>;
 }

@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Baileys WhatsApp API Platform
 
-## Getting Started
+Unofficial WhatsApp automation MVP built with Next.js 14, TypeScript, Prisma, Postgres, Redis/BullMQ, and Baileys. It follows WhatsApp Business Cloud API-style route naming while keeping Baileys behind a provider interface.
 
-First, run the development server:
+## Run locally
 
 ```bash
+cp .env.example .env
+docker compose up -d postgres redis
+npm install
+npx prisma migrate deploy
+npm run db:seed
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+For local development, Postgres is exposed on `localhost:15432` and Redis on `localhost:16379` to avoid collisions with other stacks. Inside Docker, the app still uses `postgres:5432` and `redis:6379`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Seed login:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```text
+admin@example.com / password
+```
 
-## Learn More
+## Docker
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+docker compose up -d
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The compose stack runs:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `app` on port `3000`
+- `postgres`
+- `redis`
 
-## Deploy on Vercel
+Health check:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```text
+GET /api/health
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Required environment variables
+
+- `DATABASE_URL`
+- `REDIS_URL`
+- `APP_URL`
+- `NEXTAUTH_SECRET`
+- `NEXTAUTH_URL`
+- `API_KEY_PEPPER`
+- `WEBHOOK_SIGNING_SECRET`
+- `BAILEYS_LOG_LEVEL`
+- `DEFAULT_DAILY_SEND_LIMIT`
+- `DEFAULT_MESSAGE_DELAY_MIN_MS`
+- `DEFAULT_MESSAGE_DELAY_MAX_MS`
+
+## Coolify / Dockploy notes
+
+- Use the Dockerfile or docker-compose.yml.
+- Prefer external Neon, Supabase Postgres, or managed Postgres for production.
+- Use managed Redis-compatible storage when possible.
+- Persistent volume is only required for containerized Postgres/Redis. Baileys sessions, messages, contacts, jobs, API keys, webhooks, logs, and devices are stored in Postgres.
+- Set strong unique values for `NEXTAUTH_SECRET`, `API_KEY_PEPPER`, and `WEBHOOK_SIGNING_SECRET`.
+- Run `npx prisma migrate deploy` during deployment before starting the app.
+
+## Safety warning
+
+Baileys is unofficial and not the WhatsApp Business Cloud API. Misuse, spam, high sending velocity, or suspicious automation may cause device logout, restrictions, or bans. Use daily caps, randomized delays, opt-outs, blacklist checks, pause/resume controls, and human takeover.

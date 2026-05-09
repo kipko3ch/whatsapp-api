@@ -175,10 +175,30 @@ export class BaileysProvider implements WhatsAppProvider {
     }
 
     let entry = this.sockets.get(input.deviceId);
+    this.logger.info(
+      {
+        inputDeviceId: input.deviceId,
+        resolvedDeviceId: device.id,
+        resolvedDeviceName: device.name,
+        deviceStatus: device.status,
+        hasSession: Boolean(entry),
+      },
+      "Resolving Baileys session for outbound message",
+    );
+
     if (!entry) {
       await this.connectDevice(input.deviceId);
       entry = this.sockets.get(input.deviceId);
     }
+
+    this.logger.info(
+      {
+        resolvedDeviceId: device.id,
+        resolvedDeviceName: device.name,
+        hasSession: Boolean(entry),
+      },
+      "Resolved Baileys session for outbound message",
+    );
 
     if (!entry) throw new Error("Device socket is not ready.");
 

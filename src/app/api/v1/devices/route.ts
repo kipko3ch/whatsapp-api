@@ -4,6 +4,7 @@ import { env } from "@/lib/env";
 import { apiError, getRequestMeta, requireContext } from "@/lib/api-context";
 import { auditLog } from "@/lib/audit";
 import { createDeviceSchema, updateDeviceLimitSchema } from "@/lib/validators/devices";
+import { exposeApiDeviceId } from "@/lib/whatsapp/devices";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ data: devices });
+    return NextResponse.json({ data: devices.map(exposeApiDeviceId) });
   } catch (error) {
     return apiError(error);
   }
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
       ...getRequestMeta(req),
     });
 
-    return NextResponse.json({ data: device }, { status: 201 });
+    return NextResponse.json({ data: exposeApiDeviceId(device) }, { status: 201 });
   } catch (error) {
     return apiError(error);
   }
@@ -62,7 +63,7 @@ export async function PATCH(req: NextRequest) {
       data: { dailySendLimit: body.daily_send_limit },
     });
 
-    return NextResponse.json({ data: device });
+    return NextResponse.json({ data: exposeApiDeviceId(device) });
   } catch (error) {
     return apiError(error);
   }

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { ApiError, apiError, requireContext } from "@/lib/api-context";
 import { normalizePhone } from "@/lib/phone";
 import { sendMessageSchema } from "@/lib/validators/messages";
+import { resolveWhatsappDevice } from "@/lib/whatsapp/devices";
 import { whatsappProvider } from "@/lib/whatsapp/manager";
 import { upsertContactAndConversation } from "@/lib/whatsapp/store";
 import { emitWebhookEvent } from "@/lib/webhooks";
@@ -16,16 +17,43 @@ export async function POST(req: NextRequest) {
     const ctx = await requireContext(req, ["messages:send"]);
     const body = sendMessageSchema.parse(await req.json());
     const phone = normalizePhone(body.to);
+    const deviceResolution = await resolveWhatsappDevice(ctx.workspaceId, body.device_id);
 
-    const [device, optOut, blacklisted] = await Promise.all([
-      prisma.whatsappDevice.findFirst({ where: { id: body.device_id, workspaceId: ctx.workspaceId } }),
+    console.info("[messages.send] incoming device_id", {
+      workspaceId: ctx.workspaceId,
+      inputDeviceId: body.device_id,
+      to: phone,
+      resolved: deviceResolution.ok,
+      matchedBy: deviceResolution.ok ? deviceResolution.matchedBy : deviceResolution.reason,
+      resolvedDeviceId: deviceResolution.ok ? deviceResolution.device.id : null,
+      resolvedDeviceName: deviceResolution.ok ? deviceResolution.device.name : null,
+      resolvedDeviceStatus: deviceResolution.ok ? deviceResolution.device.status : null,
+    });
+
+    const [optOut, blacklisted] = await Promise.all([
       prisma.optOut.findUnique({ where: { workspaceId_phone: { workspaceId: ctx.workspaceId, phone } } }),
       prisma.blacklistedNumber.findUnique({ where: { workspaceId_phone: { workspaceId: ctx.workspaceId, phone } } }),
     ]);
 
-    if (!device) {
+    if (!deviceResolution.ok) {
+      if (deviceResolution.reason === "ambiguous") {
+        return NextResponse.json(
+          {
+            error: {
+              code: "ambiguous_device_id",
+              message: "Multiple devices match the provided device_id. Use the internal device_id from /api/v1/devices.",
+              matches: deviceResolution.matches,
+            },
+          },
+          { status: 409 },
+        );
+      }
+
       return NextResponse.json({ error: { code: "device_not_found", message: "Device not found." } }, { status: 404 });
     }
+
+    const device = deviceResolution.device;
+
     if (optOut || blacklisted) {
       return NextResponse.json(
         { error: { code: optOut ? "recipient_opted_out" : "recipient_blacklisted", message: "Recipient cannot be messaged." } },
@@ -56,7 +84,7 @@ export async function POST(req: NextRequest) {
 
     try {
       const result = await whatsappProvider().sendMessage({
-        deviceId: body.device_id,
+        deviceId: device.id,
         to: phone,
         type: body.type,
         text: "text" in body ? body.text : undefined,

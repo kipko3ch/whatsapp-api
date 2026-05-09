@@ -84,6 +84,7 @@ export function DevicesClient({ devices }: { devices: Device[] }) {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="font-medium">{device.name}</p>
+                <p className="mt-1 break-all text-xs text-zinc-500">API device_id: {device.id}</p>
                 <p className="text-sm text-zinc-500">{device.phoneNumber ?? "Not paired"}</p>
                 {device.jid ? <p className="mt-1 break-all text-xs text-zinc-500">{device.jid}</p> : null}
                 <p className="mt-2 text-xs text-zinc-500">
